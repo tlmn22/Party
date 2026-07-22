@@ -5,6 +5,18 @@ import { supabase } from '../db/supabase';
 
 const router = Router();
 
+/**
+ * @swagger
+ * /friends:
+ *   get:
+ *     summary: List the signed-in user's friends (accepted + pending)
+ *     tags: [Friends]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Friend list
+ */
 router.get('/', requireAuth, async (req: AuthedRequest, res) => {
   // TODO: join friends + profiles into FriendSummary[]; isOnline needs a presence
   // source (e.g. Redis) once we have more than one server instance.
@@ -12,6 +24,29 @@ router.get('/', requireAuth, async (req: AuthedRequest, res) => {
   res.json(body);
 });
 
+/**
+ * @swagger
+ * /friends/request:
+ *   post:
+ *     summary: Send a friend request
+ *     tags: [Friends]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [targetUserId]
+ *             properties:
+ *               targetUserId: { type: string, format: uuid }
+ *     responses:
+ *       200:
+ *         description: Request sent
+ *       400:
+ *         description: Request failed
+ */
 router.post('/request', requireAuth, async (req: AuthedRequest, res) => {
   const { targetUserId } = req.body as SendFriendRequestBody;
 
@@ -28,6 +63,30 @@ router.post('/request', requireAuth, async (req: AuthedRequest, res) => {
   res.json({ data: { ok: true } });
 });
 
+/**
+ * @swagger
+ * /friends/respond:
+ *   post:
+ *     summary: Accept or decline an incoming friend request
+ *     tags: [Friends]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [requesterUserId, accept]
+ *             properties:
+ *               requesterUserId: { type: string, format: uuid }
+ *               accept: { type: boolean }
+ *     responses:
+ *       200:
+ *         description: Handled
+ *       400:
+ *         description: Respond failed
+ */
 router.post('/respond', requireAuth, async (req: AuthedRequest, res) => {
   const { requesterUserId, accept } = req.body as RespondFriendRequestBody;
 

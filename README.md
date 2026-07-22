@@ -25,15 +25,22 @@ npm run build && npm start   # production build
 
 `GET /health` → `{ ok: true }` ажиллаж байгааг шалгах эндпойнт.
 
+## API баримтжуулалт (Swagger)
+
+Сервэр асаасны дараа **http://localhost:2567/api-docs** дээр interactive Swagger UI нээгдэнэ — бүх REST endpoint (profile/friends/rooms) харагдаж, browser дээрээс шууд "Try it out" дараад турших боломжтой (баруун дээд буланд "Authorize" дараад Supabase-с авсан `access_token`-оо бичвэл, Bearer token шаардсан endpoint-уудыг турьж болно).
+
+Swagger зөвхөн REST-ийг баримтжуулдаг (WebSocket/Colyseus-ийг хамардаггүй) — realtime гэрээ хэвээрээ [`party-shared-types`](../party-shared-types)-ээр дамждаг. Шинэ route нэмэх бүрдээ дээр нь `@swagger` JSDoc коммент (жишээг [routes/profile.ts](src/routes/profile.ts)-с харах) нэмбэл л Swagger UI автоматаар шинэчлэгдэнэ — тусдаа файл гараар засах шаардлагагүй.
+
 ## Архитектур
 
 ```
 src/
   index.ts              # Express + Colyseus нэг http server дээр
+  swagger.ts              # swagger-jsdoc config (route-уудын @swagger коммент цуглуулна)
   db/supabase.ts         # Supabase service-role client
   middleware/auth.ts      # Supabase JWT баталгаажуулалт (Bearer token)
   realtime/joinToken.ts   # Богино хугацаат join token (REST -> WS гүүр)
-  routes/                # profile, friends, rooms REST endpoint-ууд
+  routes/                # profile, friends, rooms REST endpoint-ууд (@swagger коммент-той)
   rooms/                  # тоглоом бүрийн Colyseus Room class
     ThirteenTreePokerRoom.ts
 ```

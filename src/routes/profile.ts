@@ -5,6 +5,36 @@ import { supabase } from '../db/supabase';
 
 const router = Router();
 
+/**
+ * @swagger
+ * /profile/me:
+ *   get:
+ *     summary: Get the signed-in user's profile
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: string, format: uuid }
+ *                     displayName: { type: string }
+ *                     avatarUrl: { type: string, nullable: true }
+ *                     level: { type: integer }
+ *                     totalScore: { type: integer }
+ *                     createdAt: { type: string, format: date-time }
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       404:
+ *         description: Profile not found
+ */
 router.get('/me', requireAuth, async (req: AuthedRequest, res) => {
   const { data, error } = await supabase
     .from('profiles')
@@ -29,6 +59,30 @@ router.get('/me', requireAuth, async (req: AuthedRequest, res) => {
   res.json(body);
 });
 
+/**
+ * @swagger
+ * /profile/me:
+ *   patch:
+ *     summary: Update the signed-in user's profile
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               displayName: { type: string }
+ *               avatarUrl: { type: string, nullable: true }
+ *     responses:
+ *       200:
+ *         description: Updated
+ *       400:
+ *         description: Update failed
+ *       401:
+ *         description: Missing or invalid bearer token
+ */
 router.patch('/me', requireAuth, async (req: AuthedRequest, res) => {
   const update = req.body as UpdateProfileRequest;
 

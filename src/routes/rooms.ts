@@ -24,6 +24,54 @@ function generateRoomCode(): string {
   return code;
 }
 
+/**
+ * @swagger
+ * /rooms:
+ *   post:
+ *     summary: Create a new game room
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [gameType]
+ *             properties:
+ *               gameType: { type: string, example: thirteen_tree_poker }
+ *               maxPlayers: { type: integer, example: 4 }
+ *     responses:
+ *       200:
+ *         description: Room created — use the returned joinToken to open the Colyseus WS connection
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     room:
+ *                       type: object
+ *                       properties:
+ *                         roomId: { type: string, format: uuid }
+ *                         code: { type: string, example: A7K9QX }
+ *                         gameType: { type: string }
+ *                         hostUserId: { type: string, format: uuid }
+ *                         playerCount: { type: integer }
+ *                         maxPlayers: { type: integer }
+ *                         status: { type: string, enum: [waiting, in_progress, finished] }
+ *                         createdAt: { type: string, format: date-time }
+ *                     joinToken:
+ *                       type: string
+ *                       description: Short-lived (30s) token for the Colyseus onAuth handshake
+ *       400:
+ *         description: Room creation failed
+ *       401:
+ *         description: Missing or invalid bearer token
+ */
 router.post('/', requireAuth, async (req: AuthedRequest, res) => {
   const { gameType, maxPlayers } = req.body as CreateRoomRequest;
   const code = generateRoomCode();
@@ -54,6 +102,31 @@ router.post('/', requireAuth, async (req: AuthedRequest, res) => {
   res.json({ data: response } as ApiEnvelope<CreateRoomResponse>);
 });
 
+/**
+ * @swagger
+ * /rooms/join:
+ *   post:
+ *     summary: Join an existing room by its code (typed in, or decoded from a QR)
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code: { type: string, example: A7K9QX }
+ *     responses:
+ *       200:
+ *         description: Joined — use the returned joinToken to open the Colyseus WS connection
+ *       401:
+ *         description: Missing or invalid bearer token
+ *       404:
+ *         description: Invalid room code
+ */
 router.post('/join', requireAuth, async (req: AuthedRequest, res) => {
   const { code } = req.body as JoinRoomRequest;
 
