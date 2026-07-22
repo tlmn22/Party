@@ -31,6 +31,8 @@ npm run build && npm start   # production build
 
 Swagger зөвхөн REST-ийг баримтжуулдаг (WebSocket/Colyseus-ийг хамардаггүй) — realtime гэрээ хэвээрээ [`party-shared-types`](../party-shared-types)-ээр дамждаг. Шинэ route нэмэх бүрдээ дээр нь `@swagger` JSDoc коммент (жишээг [routes/profile.ts](src/routes/profile.ts)-с харах) нэмбэл л Swagger UI автоматаар шинэчлэгдэнэ — тусдаа файл гараар засах шаардлагагүй.
 
+Supabase Auth (signup/signin/signout) болон манай REST API-г гараар, HTTP хүсэлтээр турших алхам алхмаар зааврыг [`docs/auth-testing-guide.md`](docs/auth-testing-guide.md)-с үзнэ үү.
+
 ## Архитектур
 
 ```
