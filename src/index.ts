@@ -28,7 +28,11 @@ const gameServer = new Server({
   transport: new WebSocketTransport({ server: httpServer }),
 });
 
-gameServer.define('thirteen_tree_poker', ThirteenTreePokerRoom);
+// filterBy(['code']): routes joinOrCreate('thirteen_tree_poker', { code, ... }) calls that
+// share the same `code` into the SAME live room instance, instead of Colyseus matching
+// clients into whichever room of this type happens to be open. Without this, two unrelated
+// lobbies created via POST /rooms could get merged into one live Colyseus room.
+gameServer.define('thirteen_tree_poker', ThirteenTreePokerRoom).filterBy(['code']);
 
 const port = Number(process.env.PORT) || 2567;
 httpServer.listen(port, () => {

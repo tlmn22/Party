@@ -53,10 +53,15 @@ src/
 
 1. Client `POST /rooms` эсвэл `POST /rooms/join { code }` дуудна (Bearer JWT-тэй).
 2. Backend Supabase-д room мөр үүсгэх/олох, богино хугацаат (**30 сек**) `joinToken` (userId+roomId-г холбосон JWT, `JOIN_TOKEN_SECRET`-ээр гарын үсэг зурсан) буцаана.
-3. Client Colyseus WS холболт нээхдээ `{ joinToken, displayName }`-ийг room options болгож дамжуулна.
+3. Client Colyseus WS холболт нээхдээ `{ joinToken, code, displayName }`-ийг room options болгож дамжуулна:
+   ```js
+   const room = await client.joinOrCreate('thirteen_tree_poker', { joinToken, code, displayName });
+   ```
 4. `ThirteenTreePokerRoom.onAuth` тухайн token-ийг шалгаад `userId`-ийг баталгаажуулна — өөр тоглогчийн нэрээр нэвтрэх боломжгүй.
 
 Энэ хоёр алхамт гүүр нь: (а) REST API дээр Supabase JWT-г дахин дахин шалгуулахгүйгээр Colyseus рүү хурдан шилжих, (б) client-ээс ирэх `userId`-д итгэхгүй, зөвхөн серверийн гарын үсэгтэй token-д итгэх зарчмыг хангана.
+
+⚠️ **`code`-г бүү мартаарай** — `index.ts`-д `gameServer.define(...).filterBy(['code'])` тохируулсан тул Colyseus яг тэр `code`-той идэвхтэй room байгаа эсэхийг шалгаад, байвал түүнд нь, байхгүй бол шинэ room үүсгэж холбоно. Хэрэв `code`-гүйгээр холбогдвол, өөр тоглогчдын өрөөнд санамсаргүй холбогдох эрсдэлтэй (олон лоби зэрэг нээлттэй үед).
 
 ### Reconnect / disconnect (Colyseus 0.18 lifecycle)
 
