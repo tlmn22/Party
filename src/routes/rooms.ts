@@ -42,6 +42,7 @@ function generateRoomCode(): string {
  *             properties:
  *               gameType: { type: string, example: thirteen_tree_poker }
  *               maxPlayers: { type: integer, example: 4 }
+ *               targetScore: { type: integer, example: 30, description: "Match ends when a player's cumulative penalty score reaches this" }
  *     responses:
  *       200:
  *         description: Room created — use the returned joinToken to open the Colyseus WS connection
@@ -73,12 +74,18 @@ function generateRoomCode(): string {
  *         description: Missing or invalid bearer token
  */
 router.post('/', requireAuth, async (req: AuthedRequest, res) => {
-  const { gameType, maxPlayers } = req.body as CreateRoomRequest;
+  const { gameType, maxPlayers, targetScore } = req.body as CreateRoomRequest;
   const code = generateRoomCode();
 
   const { data, error } = await supabase
     .from('rooms')
-    .insert({ code, game_type: gameType, host_user_id: req.userId, max_players: maxPlayers ?? 4 })
+    .insert({
+      code,
+      game_type: gameType,
+      host_user_id: req.userId,
+      max_players: maxPlayers ?? 4,
+      target_score: targetScore ?? 30,
+    })
     .select()
     .single();
 
@@ -94,6 +101,7 @@ router.post('/', requireAuth, async (req: AuthedRequest, res) => {
     hostUserId: data.host_user_id,
     playerCount: 0,
     maxPlayers: data.max_players,
+    targetScore: data.target_score,
     status: data.status,
     createdAt: data.created_at,
   };
@@ -143,6 +151,7 @@ router.post('/join', requireAuth, async (req: AuthedRequest, res) => {
     hostUserId: data.host_user_id,
     playerCount: 0, // TODO: fill from the live Colyseus room once we look it up server-side
     maxPlayers: data.max_players,
+    targetScore: data.target_score,
     status: data.status,
     createdAt: data.created_at,
   };

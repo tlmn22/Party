@@ -18,6 +18,8 @@ cp .env.example .env
 
 Supabase project дээрээ **SQL Editor**-руу орж [`supabase/schema.sql`](supabase/schema.sql)-ийг ажиллуулна (profiles, friends, rooms, game_history хүснэгтүүд + шинэ хэрэглэгч бүртгүүлэхэд автоматаар profile үүсгэдэг trigger).
 
+⚠️ Хэрэв `rooms` хүснэгтээ өмнө нь үүсгэсэн бол **дахин ажиллуулах хэрэгтэй** — `target_score` баганыг idempotent `alter table` мөрөөр нэмдэг (аюулгүй, дахин ажиллуулахад алдаа өгөхгүй).
+
 ```bash
 npm run dev      # ts-node-dev, амьд ажиллана, өөрчлөлт орох бүрт restart хийнэ
 npm run build && npm start   # production build
@@ -33,6 +35,8 @@ Swagger зөвхөн REST-ийг баримтжуулдаг (WebSocket/Colyseus-
 
 Supabase Auth (signup/signin/signout) болон манай REST API-г гараар, HTTP хүсэлтээр турших алхам алхмаар зааврыг [`docs/auth-testing-guide.md`](docs/auth-testing-guide.md)-с үзнэ үү.
 
+"13 модны покер"-ын бүрэн дүрэм, Colyseus WS action/state гэрээг [`docs/thirteen-tree-poker-rules.md`](docs/thirteen-tree-poker-rules.md)-с үзнэ үү.
+
 ## Архитектур
 
 ```
@@ -43,6 +47,7 @@ src/
   middleware/auth.ts      # Supabase JWT баталгаажуулалт (Bearer token)
   realtime/joinToken.ts   # Богино хугацаат join token (REST -> WS гүүр)
   routes/                # profile, friends, rooms REST endpoint-ууд (@swagger коммент-той)
+  games/thirteenTreePoker/ # хөзөр (deck.ts) ба хослол таних/харьцуулах (combos.ts) — цэвэр логик, Colyseus-с үл хамааралтай
   rooms/                  # тоглоом бүрийн Colyseus Room class
     ThirteenTreePokerRoom.ts
 ```

@@ -31,9 +31,13 @@ create table if not exists rooms (
   game_type text not null,
   host_user_id uuid not null references profiles(id),
   max_players integer not null default 4,
+  target_score integer not null default 30,
   status text not null default 'waiting',
   created_at timestamptz not null default now()
 );
+
+-- Safe to re-run: adds the column if this table already existed before target_score was introduced.
+alter table rooms add column if not exists target_score integer not null default 30;
 
 create table if not exists game_history (
   id uuid primary key default gen_random_uuid(),
