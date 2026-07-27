@@ -37,6 +37,8 @@ Supabase Auth (signup/signin/signout) болон манай REST API-г гара
 
 "13 модны покер"-ын бүрэн дүрэм, Colyseus WS action/state гэрээг [`docs/thirteen-tree-poker-rules.md`](docs/thirteen-tree-poker-rules.md)-с үзнэ үү.
 
+**Frontend хамтрагчид өгөх баримт бичиг**: [`docs/frontend-integration-guide.md`](docs/frontend-integration-guide.md) — нэвтрэх, REST API, Colyseus холболт, action илгээх бүгдийг эхнээс нь бодит код жишээтэйгээр нэг дор.
+
 ## Тоглолтыг терминалаас гараар турших
 
 Frontend бэлэн болоогүй үед бодит Colyseus холболтоор (жинхэнэ WebSocket, REST client extension WS протокол ойлгодоггүй) тоглож үзэх [`test-client/play.ts`](test-client/play.ts) CLI хэрэгсэл бий. 4 тусдаа терминалд (нэг тоглогч тус бүрд):
