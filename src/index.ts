@@ -35,6 +35,12 @@ const gameServer = new Server({
 gameServer.define('thirteen_tree_poker', ThirteenTreePokerRoom).filterBy(['code']);
 
 const port = Number(process.env.PORT) || 2567;
-httpServer.listen(port, () => {
+
+// Must call gameServer.listen() (not httpServer.listen() directly) — it registers
+// the global transport reference and wires Colyseus's /matchmake/* + healthcheck
+// routes in front of our Express app (falling back to Express for everything
+// else). Skipping this left matchmaking requests hanging/crashing because the
+// transport singleton the route handler reads was never set.
+gameServer.listen(port).then(() => {
   console.log(`party-backend listening on :${port}`);
 });

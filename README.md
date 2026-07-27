@@ -37,6 +37,24 @@ Supabase Auth (signup/signin/signout) болон манай REST API-г гара
 
 "13 модны покер"-ын бүрэн дүрэм, Colyseus WS action/state гэрээг [`docs/thirteen-tree-poker-rules.md`](docs/thirteen-tree-poker-rules.md)-с үзнэ үү.
 
+## Тоглолтыг терминалаас гараар турших
+
+Frontend бэлэн болоогүй үед бодит Colyseus холболтоор (жинхэнэ WebSocket, REST client extension WS протокол ойлгодоггүй) тоглож үзэх [`test-client/play.ts`](test-client/play.ts) CLI хэрэгсэл бий. 4 тусдаа терминалд (нэг тоглогч тус бүрд):
+
+```bash
+export SUPABASE_ANON_KEY=<anon key>
+
+# Host (өрөө үүсгэнэ):
+npx ts-node test-client/play.ts --email host@example.com --password Password123! --host --target-score 30
+
+# Бусад 3 (host-ийн хэвлэсэн кодыг ашиглана):
+npx ts-node test-client/play.ts --email p2@example.com --password Password123! --code <ROOM CODE>
+```
+
+Холбогдсоны дараа `start`, `play 7D 7H`, `pass`, `hand`, `state`, `quit` командуудыг бичиж болно. Имэйл бүртгэлгүй бол автоматаар signUp хийж дараа нь нэвтэрнэ.
+
+⚠️ **`index.ts`-д анхаарах зүйл**: серверийг `gameServer.listen(port)`-ээр асаана, raw `httpServer.listen(port)`-ээр биш. Colyseus 0.18-д `gameServer.listen()` нь matchmaking (`/matchmake/*`) route-уудыг Express app-тай холбож, дотоод transport reference-ийг тохируулдаг чухал алхам хийдэг — үүнийг алгасвал client холбогдох үед matchmaking хүсэлт мөнхөд hang хийх эсвэл "Cannot read properties of undefined (reading 'protocol')" алдаа өгдөг (бодит network client-аар турьж олсон).
+
 ## Архитектур
 
 ```
