@@ -6,8 +6,8 @@ import {
   FiveCardComboKind,
   RealtimeErrorCode,
   ThirteenTreePokerAction,
-  ThirteenTreePokerHandResult,
   ThirteenTreePokerMatchResult,
+  ThirteenTreePokerRoundResult,
 } from 'party-shared-types';
 import { verifyJoinToken, JoinTokenPayload } from '../realtime/joinToken';
 import { dealHands } from '../games/thirteenTreePoker/deck';
@@ -29,10 +29,11 @@ class PlayerState extends Schema {
   @type('number') matchScore = 0;
   @type('boolean') hasPassed = false;
   @type('boolean') eliminated = false;
+  @type('number') placement = 0; // 0 = undetermined; 1 (winner)..4 (first eliminated) once set
 }
 
 class ThirteenTreePokerState extends Schema {
-  @type('string') status = 'waiting'; // waiting | playing | hand_end | match_end
+  @type('string') status = 'waiting'; // waiting | playing | round_end | match_end
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type('string') currentTurnUserId = '';
   @type('string') leaderUserId = ''; // must play freely (no combo to beat) on their turn
@@ -41,7 +42,7 @@ class ThirteenTreePokerState extends Schema {
   @type('string') lastComboFiveKind = ''; // only set when lastComboSize === 'five'
   @type('string') lastComboPlayedBy = '';
   @type('number') targetScore = 30;
-  @type('number') handNumber = 0;
+  @type('number') roundNumber = 0;
 }
 
 interface SeatEntry {
@@ -56,6 +57,7 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
   private hands = new Map<string, Card[]>(); // sessionId -> hand
   private supabaseRoomId: string | null = null;
   private matchStartedAt = 0;
+  private eliminatedCount = 0; // how many of the 4 have been eliminated so far this match
 
   onCreate(options: { targetScore?: number }) {
     this.state = new ThirteenTreePokerState();
@@ -158,10 +160,12 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     for (const p of this.state.players.values()) {
       p.matchScore = 0;
       p.eliminated = false;
+      p.placement = 0;
     }
+    this.eliminatedCount = 0;
 
     this.matchStartedAt = Date.now();
-    this.startNewHand();
+    this.startNewRound();
 
     if (this.supabaseRoomId) {
       supabase
@@ -172,30 +176,30 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     }
   }
 
-  private startNewHand(leaderUserId?: string) {
-    const seatEntries = this.getSeatOrderEntries();
-    const dealtHands = dealHands(seatEntries.length, CARDS_PER_PLAYER);
+  private startNewRound(leaderUserId?: string) {
+    const activeEntries = this.getActiveSeatOrderEntries();
+    const dealtHands = dealHands(activeEntries.length, CARDS_PER_PLAYER);
 
-    seatEntries.forEach(({ sessionId, player }, i) => {
+    activeEntries.forEach(({ sessionId, player }, i) => {
       this.hands.set(sessionId, dealtHands[i]);
       player.cardCount = dealtHands[i].length;
       player.hasPassed = false;
     });
 
-    for (const { sessionId } of seatEntries) {
+    for (const { sessionId } of activeEntries) {
       const hand = this.hands.get(sessionId);
       const seatClient = this.clients.get(sessionId);
       if (hand && seatClient) seatClient.send('hand', { hand });
     }
 
-    const startingLeader = leaderUserId ?? this.findStartingCardHolder(seatEntries);
+    const startingLeader = leaderUserId ?? this.findStartingCardHolder(activeEntries);
     this.state.leaderUserId = startingLeader;
     this.state.currentTurnUserId = startingLeader;
     this.state.lastComboCards.clear();
     this.state.lastComboSize = '';
     this.state.lastComboFiveKind = '';
     this.state.lastComboPlayedBy = '';
-    this.state.handNumber += 1;
+    this.state.roundNumber += 1;
     this.state.status = 'playing';
   }
 
@@ -210,6 +214,10 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     return [...this.state.players.entries()]
       .map(([sessionId, player]) => ({ sessionId, player }))
       .sort((a, b) => a.player.seatIndex - b.player.seatIndex);
+  }
+
+  private getActiveSeatOrderEntries(): SeatEntry[] {
+    return this.getSeatOrderEntries().filter((e) => !e.player.eliminated);
   }
 
   // --- playing a combo -------------------------------------------------------
@@ -260,10 +268,10 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     this.state.lastComboFiveKind = combo.fiveKind ?? '';
     this.state.lastComboPlayedBy = player.userId;
 
-    for (const p of this.state.players.values()) p.hasPassed = false;
+    for (const { player: p } of this.getActiveSeatOrderEntries()) p.hasPassed = false;
 
     if (remaining.length === 0) {
-      this.endHand(player.userId);
+      this.endRound(player.userId);
       return;
     }
 
@@ -278,14 +286,14 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
 
     player.hasPassed = true;
 
-    const others = this.getSeatOrderEntries()
+    const others = this.getActiveSeatOrderEntries()
       .map((e) => e.player)
       .filter((p) => p.userId !== this.state.lastComboPlayedBy);
     const allOthersPassed = others.every((p) => p.hasPassed);
 
     if (allOthersPassed) {
       const winner = this.state.lastComboPlayedBy;
-      for (const p of this.state.players.values()) p.hasPassed = false;
+      for (const { player: p } of this.getActiveSeatOrderEntries()) p.hasPassed = false;
       this.state.lastComboCards.clear();
       this.state.lastComboSize = '';
       this.state.lastComboFiveKind = '';
@@ -299,7 +307,7 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
   }
 
   private nextSeat(afterUserId: string, opts: { skipPassed: boolean }): string {
-    const order = this.getSeatOrderEntries().map((e) => e.player);
+    const order = this.getActiveSeatOrderEntries().map((e) => e.player);
     const idx = order.findIndex((p) => p.userId === afterUserId);
     for (let step = 1; step <= order.length; step++) {
       const candidate = order[(idx + step) % order.length];
@@ -309,58 +317,74 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     return afterUserId; // shouldn't happen — every seat passed including the asker
   }
 
-  // --- hand end / match end / scoring ----------------------------------------
+  // --- round end / elimination / match end / scoring -------------------------
 
-  private endHand(winnerUserId: string) {
-    const penalties: ThirteenTreePokerHandResult['penalties'] = [];
+  private endRound(winnerUserId: string) {
+    const activeEntries = this.getActiveSeatOrderEntries();
+    const penalties: ThirteenTreePokerRoundResult['penalties'] = [];
+    const crossedThreshold: SeatEntry[] = [];
 
-    for (const p of this.state.players.values()) {
+    for (const entry of activeEntries) {
+      const p = entry.player;
       if (p.userId === winnerUserId) continue;
       const cardsLeft = p.cardCount;
       const multiplier = cardsLeft === 13 ? 3 : cardsLeft >= 10 ? 2 : 1;
       const pointsAdded = cardsLeft * multiplier;
       p.matchScore += pointsAdded;
       penalties.push({ userId: p.userId, cardsLeft, pointsAdded });
+      if (p.matchScore >= this.state.targetScore) crossedThreshold.push(entry);
     }
 
-    this.broadcast(
-      'hand_result',
-      { handNumber: this.state.handNumber, winnerUserId, penalties } as ThirteenTreePokerHandResult,
-    );
+    // Tie-break within the same round: the higher score gets the worse placement.
+    crossedThreshold.sort((a, b) => b.player.matchScore - a.player.matchScore);
 
-    this.state.status = 'hand_end';
+    const eliminatedThisRound: ThirteenTreePokerRoundResult['eliminated'] = [];
+    for (const entry of crossedThreshold) {
+      const placement = PLAYERS_PER_MATCH - this.eliminatedCount;
+      entry.player.eliminated = true;
+      entry.player.placement = placement;
+      this.eliminatedCount += 1;
+      this.hands.delete(entry.sessionId);
+      this.clients.get(entry.sessionId)?.send('hand', { hand: [] });
+      eliminatedThisRound.push({ userId: entry.player.userId, placement });
+    }
 
-    const loser = [...this.state.players.values()].find((p) => p.matchScore >= this.state.targetScore);
-    if (loser) {
-      this.endMatch(loser.userId);
+    this.broadcast('round_result', {
+      roundNumber: this.state.roundNumber,
+      winnerUserId,
+      penalties,
+      eliminated: eliminatedThisRound,
+    } as ThirteenTreePokerRoundResult);
+
+    this.state.status = 'round_end';
+
+    const stillActive = this.getActiveSeatOrderEntries();
+    if (stillActive.length === 1) {
+      stillActive[0].player.placement = PLAYERS_PER_MATCH - this.eliminatedCount; // resolves to 1
+      this.endMatch(stillActive[0].player.userId);
     } else {
-      this.startNewHand(winnerUserId);
+      this.startNewRound(winnerUserId);
     }
   }
 
-  private endMatch(loserUserId: string) {
+  private endMatch(winnerUserId: string) {
     this.state.status = 'match_end';
 
-    const seatEntries = this.getSeatOrderEntries();
-    const finalScores = seatEntries
-      .map(({ player }) => ({ userId: player.userId, matchScore: player.matchScore }))
-      .sort((a, b) => a.matchScore - b.matchScore); // lowest score = best placement
+    const finalScores = this.getSeatOrderEntries()
+      .map(({ player }) => ({ userId: player.userId, matchScore: player.matchScore, placement: player.placement }))
+      .sort((a, b) => a.placement - b.placement);
 
-    const loserEntry = seatEntries.find((e) => e.player.userId === loserUserId);
-    if (loserEntry) loserEntry.player.eliminated = true;
-
-    this.broadcast('match_result', { loserUserId, finalScores } as ThirteenTreePokerMatchResult);
+    this.broadcast('match_result', { winnerUserId, finalScores } as ThirteenTreePokerMatchResult);
 
     if (this.supabaseRoomId) {
-      this.persistMatchHistory(seatEntries, finalScores).catch(() => {
+      this.persistMatchHistory(finalScores).catch(() => {
         // Best-effort — a history-write failure shouldn't crash the live room.
       });
     }
   }
 
   private async persistMatchHistory(
-    seatEntries: SeatEntry[],
-    finalScores: { userId: string; matchScore: number }[],
+    finalScores: { userId: string; matchScore: number; placement: number }[],
   ) {
     const durationSeconds = Math.max(0, Math.round((Date.now() - this.matchStartedAt) / 1000));
 
@@ -371,12 +395,13 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
       .single();
     if (error || !history) return;
 
-    const rows = finalScores.map((entry, index) => ({
+    const seatEntries = this.getSeatOrderEntries();
+    const rows = finalScores.map((entry) => ({
       history_id: history.id,
       user_id: entry.userId,
       display_name: seatEntries.find((e) => e.player.userId === entry.userId)?.player.displayName ?? 'Player',
       score_delta: entry.matchScore,
-      placement: index + 1,
+      placement: entry.placement,
     }));
     await supabase.from('game_history_players').insert(rows);
     await supabase.from('rooms').update({ status: 'finished' }).eq('id', this.supabaseRoomId);
