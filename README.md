@@ -39,6 +39,13 @@ Supabase Auth (signup/signin/signout) болон манай REST API-г гара
 
 **Frontend хамтрагчид өгөх баримт бичиг**: [`docs/frontend-integration-guide.md`](docs/frontend-integration-guide.md) — нэвтрэх, REST API, Colyseus холболт, action илгээх бүгдийг эхнээс нь бодит код жишээтэйгээр нэг дор.
 
+## Идэвхтэй room-уудыг хянах
+
+Хоёр түвшинд:
+
+- **Түүхэн бүртгэл** — Supabase Dashboard → Table Editor → `rooms` (эсвэл SQL Editor-т `select code, status, created_at from rooms order by created_at desc`). Room бүрийн `status` (`waiting`/`in_progress`/`finished`) энд автоматаар шинэчлэгддэг.
+- **Яг одоо санах ойд идэвхтэй Colyseus room-ууд (live)** — `GET /rooms/live` (Bearer token шаардлагатай) — `matchMaker.query()`-ээр шууд дуудаж `{ roomId, code, clients, maxClients, locked, createdAt }` буцаадаг. `@colyseus/monitor`-ийг оролдоод, ESM/CJS dual-package зөрчлөөс болж ажиллуулж чадаагүй тул үүнийг оронд нь ашиглаж байгаа (Swagger UI-аас "Try it out" хийж болно).
+
 ## Тоглолтыг терминалаас гараар турших
 
 Frontend бэлэн болоогүй үед бодит Colyseus холболтоор (жинхэнэ WebSocket, REST client extension WS протокол ойлгодоггүй) тоглож үзэх [`test-client/play.ts`](test-client/play.ts) CLI хэрэгсэл бий. 4 тусдаа терминалд (нэг тоглогч тус бүрд):

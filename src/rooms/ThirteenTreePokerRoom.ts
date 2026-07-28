@@ -59,10 +59,15 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
   private matchStartedAt = 0;
   private eliminatedCount = 0; // how many of the 4 have been eliminated so far this match
 
-  onCreate(options: { targetScore?: number }) {
+  onCreate(options: { targetScore?: number; code?: string }) {
     this.state = new ThirteenTreePokerState();
     this.state.targetScore = options?.targetScore ?? 30;
     this.onMessage('action', (client, message: ThirteenTreePokerAction) => this.handleAction(client, message));
+
+    // Exposes the human-friendly room code via matchMaker.query()/metadata, so an
+    // admin listing (GET /rooms/live) can show which live room is which — the
+    // code otherwise only lives inside filterBy's internal bookkeeping.
+    if (options?.code) this.setMetadata({ code: options.code });
   }
 
   // Verifies the short-lived join token issued by POST /rooms or /rooms/join so a

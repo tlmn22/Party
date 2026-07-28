@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { matchMaker } from '@colyseus/core';
 import {
   ApiEnvelope,
   CreateRoomRequest,
@@ -158,6 +159,52 @@ router.post('/join', requireAuth, async (req: AuthedRequest, res) => {
 
   const response: JoinRoomResponse = { room, joinToken: issueJoinToken(req.userId!, room.roomId) };
   res.json({ data: response } as ApiEnvelope<JoinRoomResponse>);
+});
+
+/**
+ * @swagger
+ * /rooms/live:
+ *   get:
+ *     summary: List currently-live Colyseus rooms (in-memory, real-time — not the historical Supabase list)
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Live room list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       roomId: { type: string, description: "Colyseus's internal room id (not our `code`)" }
+ *                       code: { type: string, nullable: true, example: A7K9QX }
+ *                       clients: { type: integer }
+ *                       maxClients: { type: integer }
+ *                       locked: { type: boolean }
+ *                       createdAt: { type: string, format: date-time }
+ *       401:
+ *         description: Missing or invalid bearer token
+ */
+router.get('/live', requireAuth, async (_req: AuthedRequest, res) => {
+  const rooms = await matchMaker.query({ name: 'thirteen_tree_poker' });
+
+  const body: ApiEnvelope<unknown> = {
+    data: rooms.map((room) => ({
+      roomId: room.roomId,
+      code: (room.metadata as { code?: string } | undefined)?.code ?? null,
+      clients: room.clients,
+      maxClients: room.maxClients,
+      locked: room.locked ?? false,
+      createdAt: room.createdAt,
+    })),
+  };
+  res.json(body);
 });
 
 export default router;
