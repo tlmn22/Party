@@ -33,7 +33,7 @@ class PlayerState extends Schema {
 }
 
 class ThirteenTreePokerState extends Schema {
-  @type('string') status = 'waiting'; // waiting | playing | round_end | match_end
+  @type('string') status = 'waiting'; // waiting | dealt | playing | round_end | match_end
   @type({ map: PlayerState }) players = new MapSchema<PlayerState>();
   @type('string') currentTurnUserId = '';
   @type('string') leaderUserId = ''; // must play freely (no combo to beat) on their turn
@@ -126,8 +126,20 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     const player = this.state.players.get(client.sessionId);
     if (!player) return;
 
+    if (message.type === 'deal_cards') {
+      this.handleDealCards(client, player);
+      return;
+    }
     if (message.type === 'start_game') {
       this.handleStartGame(client, player);
+      return;
+    }
+
+    // play_cards/pass are only meaningful once start_game has flipped the room
+    // to 'playing' — reject them during 'waiting'/'dealt'/'round_end'/'match_end'
+    // instead of relying on currentTurnUserId happening to not match.
+    if (this.state.status !== 'playing') {
+      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Round has not started yet' });
       return;
     }
 
@@ -143,15 +155,15 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     }
   }
 
-  // --- start / deal ---------------------------------------------------------
+  // --- deal / start (two-step, host-driven, repeats every round) -------------
 
-  private handleStartGame(client: Client, player: PlayerState) {
+  private handleDealCards(client: Client, player: PlayerState) {
     if (!player.isHost) {
-      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Only the host can start the game' });
+      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Only the host can deal' });
       return;
     }
-    if (this.state.status !== 'waiting' && this.state.status !== 'match_end') {
-      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Match already in progress' });
+    if (this.state.status !== 'waiting' && this.state.status !== 'round_end' && this.state.status !== 'match_end') {
+      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Cards already dealt for this round' });
       return;
     }
     if (this.state.players.size !== PLAYERS_PER_MATCH) {
@@ -162,17 +174,22 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
       return;
     }
 
-    for (const p of this.state.players.values()) {
-      p.matchScore = 0;
-      p.eliminated = false;
-      p.placement = 0;
+    // A fresh match (vs. continuing to the next round of one already in progress)
+    // resets everyone's cumulative score/elimination state.
+    const isNewMatch = this.state.status === 'waiting' || this.state.status === 'match_end';
+    if (isNewMatch) {
+      for (const p of this.state.players.values()) {
+        p.matchScore = 0;
+        p.eliminated = false;
+        p.placement = 0;
+      }
+      this.eliminatedCount = 0;
+      this.matchStartedAt = Date.now();
     }
-    this.eliminatedCount = 0;
 
-    this.matchStartedAt = Date.now();
-    this.startNewRound();
+    this.dealRound(isNewMatch ? undefined : this.state.leaderUserId);
 
-    if (this.supabaseRoomId) {
+    if (isNewMatch && this.supabaseRoomId) {
       supabase
         .from('rooms')
         .update({ status: 'in_progress' })
@@ -181,7 +198,24 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     }
   }
 
-  private startNewRound(leaderUserId?: string) {
+  private handleStartGame(client: Client, player: PlayerState) {
+    if (!player.isHost) {
+      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Only the host can start the round' });
+      return;
+    }
+    if (this.state.status !== 'dealt') {
+      client.send('error', { code: RealtimeErrorCode.INVALID_ACTION, message: 'Deal cards before starting' });
+      return;
+    }
+    this.state.status = 'playing';
+  }
+
+  // Deals a fresh hand to every active player and moves the room to 'dealt' —
+  // NOT 'playing' yet. Players can see their cards, but play_cards/pass stay
+  // rejected until the host's separate start_game flips the room to 'playing'.
+  // Any pacing between the two (a "look at your hand" countdown, etc.) is a
+  // frontend concern — the server has no timer of its own here.
+  private dealRound(leaderUserId?: string) {
     const activeEntries = this.getActiveSeatOrderEntries();
     const dealtHands = dealHands(activeEntries.length, CARDS_PER_PLAYER);
 
@@ -205,7 +239,7 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     this.state.lastComboFiveKind = '';
     this.state.lastComboPlayedBy = '';
     this.state.roundNumber += 1;
-    this.state.status = 'playing';
+    this.state.status = 'dealt';
   }
 
   private findStartingCardHolder(seatEntries: SeatEntry[]): string {
@@ -362,13 +396,17 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
     } as ThirteenTreePokerRoundResult);
 
     this.state.status = 'round_end';
+    this.state.currentTurnUserId = ''; // no one's turn while waiting on the host's next deal_cards
 
     const stillActive = this.getActiveSeatOrderEntries();
     if (stillActive.length === 1) {
       stillActive[0].player.placement = PLAYERS_PER_MATCH - this.eliminatedCount; // resolves to 1
       this.endMatch(stillActive[0].player.userId);
     } else {
-      this.startNewRound(winnerUserId);
+      // Round winner leads the next round — remembered here for the host's next
+      // deal_cards to pick up. The room stays in 'round_end' until then (rounds
+      // no longer auto-deal; see the class-level two-step deal/start comment).
+      this.state.leaderUserId = winnerUserId;
     }
   }
 

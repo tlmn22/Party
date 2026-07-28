@@ -12,7 +12,8 @@
 // public one from Project Settings -> API, safe to pass around — NOT service_role).
 //
 // Commands once connected:
-//   start                 — host only, begins the match
+//   deal                  — host only, deals cards for a new match/round (room -> 'dealt')
+//   start                 — host only, begins actual play for the dealt round (room -> 'playing')
 //   play 7D 7H            — play a combo (space-separated cards)
 //   pass
 //   hand                  — reprint your current hand
@@ -141,13 +142,15 @@ async function main() {
   colyseusRoom.onStateChange((state: any) => renderState(state));
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  console.log('\nCommands: start | play <card> <card>... | pass | hand | state | quit\n');
+  console.log('\nCommands: deal | start | play <card> <card>... | pass | hand | state | quit\n');
   rl.setPrompt('> ');
   rl.prompt();
 
   rl.on('line', (line) => {
     const [cmd, ...rest] = line.trim().split(/\s+/);
-    if (cmd === 'start') {
+    if (cmd === 'deal') {
+      colyseusRoom.send('action', { actionId: randomUUID(), type: 'deal_cards', payload: {} });
+    } else if (cmd === 'start') {
       colyseusRoom.send('action', { actionId: randomUUID(), type: 'start_game', payload: {} });
     } else if (cmd === 'play') {
       colyseusRoom.send('action', { actionId: randomUUID(), type: 'play_cards', payload: { cards: rest } });
@@ -162,7 +165,7 @@ async function main() {
       rl.close();
       process.exit(0);
     } else if (cmd) {
-      console.log('Unknown command. Use: start | play <card>... | pass | hand | state | quit');
+      console.log('Unknown command. Use: deal | start | play <card>... | pass | hand | state | quit');
     }
     rl.prompt();
   });

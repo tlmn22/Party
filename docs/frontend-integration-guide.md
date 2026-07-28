@@ -102,7 +102,7 @@ const room = await client.joinOrCreate('thirteen_tree_poker', {
 
 ```ts
 room.onStateChange((state) => {
-  console.log(state.status);            // waiting | playing | round_end | match_end
+  console.log(state.status);            // waiting | dealt | playing | round_end | match_end
   console.log(state.currentTurnUserId);  // хэний ээлж
   console.log(state.lastComboCards);     // сүүлд тавьсан хослол (хоосон бол чөлөөтэй эхэлнэ)
   for (const p of state.players.values()) {
@@ -125,7 +125,8 @@ room.onMessage('hand', (msg) => {
 room.onMessage('round_result', (msg) => {
   // { roundNumber, winnerUserId, penalties: [{userId, cardsLeft, pointsAdded, matchScore}], eliminated: [{userId, placement}] }
   // matchScore = тухайн тоглогчийн round-ийн дараах ХУРИМТЛАГДСАН нийт оноо (state-ээс тусад нь харах шаардлагагүй)
-  // winnerUserId нь дараагийн round-ыг мөн эхэлнэ — round автоматаар үргэлжилнэ, "next round" товч хэрэггүй
+  // Ирсний дараа status='round_end' болно — match дуусаагүй бол host дараагийн round-ыг
+  // эхлүүлэхийн тулд ДАХИН deal_cards → start_game илгээх ёстой (доор тайлбарласан).
 });
 
 room.onMessage('match_result', (msg) => {
@@ -137,32 +138,26 @@ room.onMessage('error', (msg) => {
 });
 ```
 
-### ⚠️ Round автоматаар үргэлждэг — UI зөвхөн state-ийг "дагаж" харуулах ёстой
+### ⚠️ Round бүр 2 алхамт (`deal_cards` → `start_game`) — host заавал дуудна
 
-Энэ бол хамгийн их төөрөгдөл гаргадаг цэг тул тодорхой тайлбарлая.
-
-**Round-д зориулсан "эхлүүлэх"/"дуусгах" action байхгүй.** Нэг тоглогч картаа дуусгамагц сервер **шууд, автоматаар**:
-1. Оноо бодоод хуваарилна
-2. Шинэ карт тараана (бүх идэвхтэй тоглогчид шинэ `hand` мессеж очно)
-3. `state.roundNumber`-ийг нэмэгдүүлнэ, `state.lastComboCards`-ыг хоослоно (шинэ round чөлөөтэй эхэлнэ)
-4. Ялсан хүнийг дараагийн round-ын ээлжинд тавина (`state.currentTurnUserId`)
-
-Энэ бүгд **нэг мөчид, host эсвэл ямар нэг тоглогчийн үйлдэлгүйгээр** болдог. Тиймээс frontend талд **"дараагийн round" гэсэн товч, эсвэл "round дуусахыг хүлээх" гэсэн алхам байх ёсгүй** — зөвхөн доорх 2 мессежийг сонсоод дэлгэцээ шинэчлээрэй:
+Энэ бол round бүрт (match-ийн эхнийхэд ч, дараагийн бүхэнд ч) давтагддаг зан үйл. **UI-д зориулсан гол дүрэм: `deal_cards` → тоглогчид гараа хардаг → (frontend-ийн шийдвэрээр хэзээ ч, жишээ 3 секундын countdown-ийн дараа) `start_game` → одоо л тоглож эхэлнэ.**
 
 ```ts
-room.onMessage('hand', (msg) => {
-  myHand = msg.hand;      // шинэ round эхлэхэд энэ автоматаар шинэ 13 картаар ирнэ
-  renderHand(myHand);     // дэлгэцээ шууд дахин зурна
-});
+// Match-ийн эхэнд, эсвэл өмнөх round дуусаад дараагийнхыг эхлүүлэхэд (HOST Л дуудна):
+room.send('action', { actionId: crypto.randomUUID(), type: 'deal_cards', payload: {} });
+// -> status 'dealt' болно, бүх тоглогч 'hand' мессежээр шинэ 13 картаа авна
+// -> ЭНЭ мөчид play_cards/pass илгээвэл INVALID_ACTION ("Round has not started yet") ирнэ
 
-room.onStateChange((state) => {
-  renderTable(state);     // roundNumber, lastComboCards, currentTurnUserId, players бүгд шинэчлэгдсэн эсэхийг шалгах шаардлагагүй — ЯГ ИРСЭН state-ээрээ дахин зур
-});
+// Frontend өөрийн логикоор (countdown, "Бэлэн боллоо" товч гэх мэт) шийдээд:
+room.send('action', { actionId: crypto.randomUUID(), type: 'start_game', payload: {} });
+// -> status 'playing' болно, одооноос play_cards/pass ажиллана
 ```
 
-**Түгээмэл алдаа (яг үүнээс болж "round дуусаагүй юм шиг санагдсан" тохиолдол гарсан)**: хуучин `lastComboCards`/`hand`-ийг local state/variable-д хадгалаад, зөвхөн ХЭСЭГЧИЛЖ шинэчилдэг код бичих — жишээ нь зөвхөн `play_cards` дараа өөрийн хэсгээ manual-аар шинэчлээд, `room.onStateChange`-ээс ирсэн шинэ `state`-ийг бүрэн дахин зурахгүй байх. Ингэвэл round бодитоор шинээр эхэлсэн ч, дэлгэц дээр хуучин combo хэвээр харагдаж, тоглогчид "яагаад л би энэ комбог дийлэх гэж оролдоод байгаа юм" гэсэн буруу мэдрэмж төрүүлдэг — **сервер талд алдаа байхгүй, зөвхөн UI хуучин state-ээ цэвэрлэдэггүй байсан хэрэг**.
+**Сервер `deal_cards` болон `start_game`-ийн хооронд ямар ч timer/countdown барьдаггүй** — энэ хугацааг (0 секунд ч байж болно, эсвэл 5 секундын "гараа хараарай" countdown ч байж болно) **бүхэлдээ frontend шийднэ**. Хүсвэл `deal_cards`-ийн дараа шууд `start_game`-ийг ч дараад илгээж болно (countdown огт хэрэггүй бол).
 
-**Зөв загвар**: `room.onStateChange`/`room.onMessage('hand', ...)`-аас ирсэн бүрд, **бүхэл дэлгэцээ (ширээ, гар, ээлж) шинэ өгөгдлөөр бүрэн дахин зурна** — өмнөх render-ийн үлдэгдэл (stale closure, хуучин useState) ашиглахгүй. React ашиглаж байгаа бол `state`/`hand`-ийг шууд `useState`-д оноож, тэрхүү state-ээр л бүх дэд component-уудаа зурах нь энгийн бөгөөд найдвартай арга.
+⚠️ **Round автоматаар үргэлждэггүй** — round бүрийн (`round_result` ирсний) дараа **host заавал дахин `deal_cards` → `start_game`-ийг дуудах ёстой**, эс тэгвэл дараагийн round эхлэхгүй, room `round_end` төлөвт зогсоод үлдэнэ.
+
+**UI зурах зарчим хэвээрээ**: `onStateChange`/`onMessage('hand', ...)`-аас ирсэн бүрд бүхэл дэлгэцээ (ширээ, гар, ээлж) шинэ өгөгдлөөр бүрэн дахин зур — өмнөх render-ийн үлдэгдэл (stale closure, хуучин useState) бүү ашигла. React ашиглаж байгаа бол `state`/`hand`-ийг шууд `useState`-д оноож, тэрхүү state-ээр л бүх дэд component-уудаа зурах нь энгийн бөгөөд найдвартай арга.
 
 ---
 
@@ -171,7 +166,8 @@ room.onStateChange((state) => {
 Action бүр `actionId` (client-generated, жишээ `crypto.randomUUID()`) дагуулах ёстой — давхар илгээвэл сервер `DUPLICATE_ACTION` алдаа буцаана.
 
 ```ts
-// Host л дуудна, яг 4 тоглогч room-д байх ёстой
+// Host л дуудна — round бүрийн эхэнд 2-уулаа дараалан (3-р хэсгээс дэлгэрэнгүй харах)
+room.send('action', { actionId: crypto.randomUUID(), type: 'deal_cards', payload: {} });
 room.send('action', { actionId: crypto.randomUUID(), type: 'start_game', payload: {} });
 
 // Хослол тавих

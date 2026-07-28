@@ -34,19 +34,31 @@ room   (тогтмол, code-той)
 ## Client → Server action (`room.send('action', {...})`)
 
 ```ts
+{ actionId: string, type: 'deal_cards', payload: {} }
 { actionId: string, type: 'start_game', payload: {} }
 { actionId: string, type: 'play_cards', payload: { cards: string[] } } // жишээ: ["7D", "7H"]
 { actionId: string, type: 'pass', payload: {} }
 ```
 
-- `start_game` — зөвхөн `isHost === true` тоглогч, яг 4 тоглогч room-д байгаа үед л ажиллана. Match дууссаны (`status === 'match_end'`) дараа дахин дуудаж шинэ match эхлүүлж болно (бүх тоглогч дахин идэвхтэй болно).
 - `actionId` — client-generated (жишээ UUID), давхар илгээвэл сервер `DUPLICATE_ACTION` алдаа буцаана.
-- ⚠️ **Round-д зориулсан "start"/"end" action байхгүй** — round бүрийг сервер **автоматаар** эхлүүлж, дуусгадаг (нэг тоглогч картаа дуусгамагц шууд). Frontend зөвхөн `round_result`/`match_result`-ыг сонсоод, шинэ `hand` мессежийг харуулах ёстой — товч дарж "дараагийн round" эхлүүлэх алхам байхгүй.
+
+### ⚠️ Round бүр — 2 алхамт, host-driven handshake (round бүрт хамаарна, match-ийн эхнийхэд ч)
+
+Round эхлэх бүрд (match-ийн эхний round-аас эхлээд, дараагийн round бүрт ч) **host** дараах 2 action-ыг дарааллаар нь илгээх ёстой:
+
+1. **`deal_cards`** — идэвхтэй тоглогч бүрт шинэ 13 карт тараагаад, `hand` мессеж илгээнэ, `status` → **`dealt`** болно. Энэ мөчид тоглогчид гараа харах боломжтой, гэхдээ **`play_cards`/`pass` илгээвэл `INVALID_ACTION` ("Round has not started yet") алдаа буцна** — тоглолт хараахан эхлээгүй.
+   - Match-ийн эхний удаа (`status === 'waiting'`) эсвэл өмнөх match дууссаны дараа (`status === 'match_end'`) дуудвал: бүх тоглогчийн `matchScore`/`eliminated`/`placement` шинэчлэгдэж (0/false/0), **шинэ match** эхэлнэ.
+   - Round дуусаад (`status === 'round_end'`) дуудвал: оноо хэвээр үлдэж, зөвхөн шинэ карт тараагдаад, өмнөх round-ийн ялагч дараагийн round-ыг эхэлнэ.
+2. **`start_game`** — зөвхөн `status === 'dealt'` үед л ажиллана, `status` → **`playing`** болгож, тоглоом бодитоор эхэлнэ (одооноос `play_cards`/`pass` хүлээн авагдана).
+
+**`deal_cards` болон `start_game`-ийн хоорондох хугацаа/countdown-ыг сервер хянадаггүй** — энэ бол бүхэлдээ **frontend талын шийдвэр** (жишээ: "3 секундын дараа автоматаар start_game илгээх" гэсэн логикийг client дотроо бич). Сервер ямар ч timer/timeout логикгүй, зөвхөн 2 action-ыг дараалуулж хүлээж авдаг.
+
+⚠️ **Энэ бол өмнөх хувилбараас өөрчлөгдсөн зан үйл** — өмнө нь round автоматаар дуусаад шууд шинээр эхэлдэг байсан (host-ийн оролцоогүйгээр). Одоо **round бүрийн дараа host заавал дахин `deal_cards` → `start_game`-ийг дуудах ёстой** — автоматаар үргэлжлэхгүй.
 
 ## Server → Client
 
 **Синхрон state** (`room.state`, `ThirteenTreePokerRoomState`):
-- `status`: `waiting | playing | round_end | match_end`
+- `status`: `waiting | dealt | playing | round_end | match_end` (`dealt` = `deal_cards`-ийн дараа, `start_game`-ийг хүлээж байгаа)
 - `players`: map — `userId, displayName, seatIndex, connected, isHost, cardCount, matchScore, hasPassed, eliminated, placement` (`placement` 0 = тодорхойгүй, 1 = ялагч, 2-4 = хасагдсан дараалал)
 - `currentTurnUserId`, `leaderUserId`
 - `lastComboCards` (хоосон бол одоогийн ээлжтэй хүн чөлөөтэй эхэлнэ), `lastComboSize`, `lastComboFiveKind`, `lastComboPlayedBy`
@@ -62,9 +74,11 @@ room   (тогтмол, code-той)
 // round_result — round бүр дууссан даруйд
 {
   roundNumber: number,
-  winnerUserId: string,      // энэ хүн дараагийн round-ыг мөн эхэлнэ (state.leaderUserId-аар баталгаажина)
+  winnerUserId: string,      // энэ хүн дараагийн round-ыг мөн эхэлнэ (host дараагийн deal_cards дуудахад)
   penalties: { userId, cardsLeft, pointsAdded, matchScore }[], // matchScore = энэ round-ийн дараах ХУРИМТЛАГДСАН нийт оноо
   eliminated: { userId, placement }[], // ихэвчлэн хоосон, 1+ тоглогч зэрэг хасагдаж болно
+  // round_result ирсний дараа status='round_end' болно — match дуусаагүй бол host дараагийн
+  // round-ыг эхлүүлэхийн тулд дахин deal_cards → start_game илгээх ёстой (автоматаар үргэлжлэхгүй)
 }
 
 // match_result — match дууссан даруйд (1 идэвхтэй тоглогч үлдэхэд)
@@ -87,7 +101,9 @@ room   (тогтмол, code-той)
 
 ## Турших
 
-`@colyseus/testing`-ээр бот тоглогчидтой (зөвхөн дан хөзөр тоглодог энгийн стратеги) бодит 14 round-той match ажиллуулж баталгаажуулсан — 4→3→2→1 идэвхтэй тоглогчоор шилжиж, placement зөв (хасагдсан дараалал, оноогоор биш) оноогдож байгааг шалгасан.
+`@colyseus/testing`-ээр бот тоглогчидтой (зөвхөн дан хөзөр тоглодог энгийн стратеги) бодит match ажиллуулж баталгаажуулсан:
+- Анхны 14-round тестээр (нэг талт deal+start): 4→3→2→1 идэвхтэй тоглогчоор шилжиж, placement зөв (хасагдсан дараалал, оноогоор биш) оноогдож байгааг шалгасан.
+- Хоёр алхамт (`deal_cards`/`start_game`) handshake нэмсний дараа 15-round тестээр: `dealt` төлөвт `play_cards` зөв татгалзагдаж (`INVALID_ACTION`), round бүрийн дараа host-ийн гар аргаар `deal_cards`→`start_game` дуудсанаар зөв үргэлжилж, эцэст нь match зөв дуусаж байгааг шалгасан.
 
 ## TODO (дараа ярилцах)
 
