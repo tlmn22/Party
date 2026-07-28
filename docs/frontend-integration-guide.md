@@ -123,7 +123,9 @@ room.onMessage('hand', (msg) => {
 
 ```ts
 room.onMessage('round_result', (msg) => {
-  // { roundNumber, winnerUserId, penalties: [{userId, cardsLeft, pointsAdded}], eliminated: [{userId, placement}] }
+  // { roundNumber, winnerUserId, penalties: [{userId, cardsLeft, pointsAdded, matchScore}], eliminated: [{userId, placement}] }
+  // matchScore = тухайн тоглогчийн round-ийн дараах ХУРИМТЛАГДСАН нийт оноо (state-ээс тусад нь харах шаардлагагүй)
+  // winnerUserId нь дараагийн round-ыг мөн эхэлнэ — round автоматаар үргэлжилнэ, "next round" товч хэрэггүй
 });
 
 room.onMessage('match_result', (msg) => {

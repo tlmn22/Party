@@ -41,6 +41,7 @@ room   (тогтмол, code-той)
 
 - `start_game` — зөвхөн `isHost === true` тоглогч, яг 4 тоглогч room-д байгаа үед л ажиллана. Match дууссаны (`status === 'match_end'`) дараа дахин дуудаж шинэ match эхлүүлж болно (бүх тоглогч дахин идэвхтэй болно).
 - `actionId` — client-generated (жишээ UUID), давхар илгээвэл сервер `DUPLICATE_ACTION` алдаа буцаана.
+- ⚠️ **Round-д зориулсан "start"/"end" action байхгүй** — round бүрийг сервер **автоматаар** эхлүүлж, дуусгадаг (нэг тоглогч картаа дуусгамагц шууд). Frontend зөвхөн `round_result`/`match_result`-ыг сонсоод, шинэ `hand` мессежийг харуулах ёстой — товч дарж "дараагийн round" эхлүүлэх алхам байхгүй.
 
 ## Server → Client
 
@@ -61,8 +62,8 @@ room   (тогтмол, code-той)
 // round_result — round бүр дууссан даруйд
 {
   roundNumber: number,
-  winnerUserId: string,
-  penalties: { userId, cardsLeft, pointsAdded }[],
+  winnerUserId: string,      // энэ хүн дараагийн round-ыг мөн эхэлнэ (state.leaderUserId-аар баталгаажина)
+  penalties: { userId, cardsLeft, pointsAdded, matchScore }[], // matchScore = энэ round-ийн дараах ХУРИМТЛАГДСАН нийт оноо
   eliminated: { userId, placement }[], // ихэвчлэн хоосон, 1+ тоглогч зэрэг хасагдаж болно
 }
 

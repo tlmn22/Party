@@ -336,7 +336,7 @@ export class ThirteenTreePokerRoom extends Room<{ state: ThirteenTreePokerState 
       const multiplier = cardsLeft === 13 ? 3 : cardsLeft >= 10 ? 2 : 1;
       const pointsAdded = cardsLeft * multiplier;
       p.matchScore += pointsAdded;
-      penalties.push({ userId: p.userId, cardsLeft, pointsAdded });
+      penalties.push({ userId: p.userId, cardsLeft, pointsAdded, matchScore: p.matchScore });
       if (p.matchScore >= this.state.targetScore) crossedThreshold.push(entry);
     }
 
