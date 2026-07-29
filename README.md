@@ -60,7 +60,9 @@ npx ts-node test-client/play.ts --email host@example.com --password Password123!
 npx ts-node test-client/play.ts --email p2@example.com --password Password123! --code <ROOM CODE>
 ```
 
-Холбогдсоны дараа `start`, `play 7D 7H`, `pass`, `hand`, `state`, `quit` командуудыг бичиж болно. Имэйл бүртгэлгүй бол автоматаар signUp хийж дараа нь нэвтэрнэ.
+Холбогдсоны дараа `deal`, `start`, `play 7D 7H`, `pass`, `hand`, `state`, `quit` командуудыг бичиж болно. Имэйл бүртгэлгүй бол автоматаар signUp хийж дараа нь нэвтэрнэ.
+
+Холбогдох бүрд `RECONNECT TOKEN` хэвлэгдэнэ — тухайн client-ийг санаатайгаар "унагаагаад" (Ctrl+C), дараа нь `--reconnect <token>`-оор дахин ажиллуулбал **яг ижил суудал руугаа** буцаж орно (интернет тасрах/refresh хийхтэй адилхан симуляц). Дэлгэрэнгүйг [`docs/frontend-integration-guide.md`](docs/frontend-integration-guide.md)-ийн "Interner тасрах / refresh хийхэд буцаж орох" хэсгээс үзнэ үү.
 
 ⚠️ **`index.ts`-д анхаарах зүйл**: серверийг `gameServer.listen(port)`-ээр асаана, raw `httpServer.listen(port)`-ээр биш. Colyseus 0.18-д `gameServer.listen()` нь matchmaking (`/matchmake/*`) route-уудыг Express app-тай холбож, дотоод transport reference-ийг тохируулдаг чухал алхам хийдэг — үүнийг алгасвал client холбогдох үед matchmaking хүсэлт мөнхөд hang хийх эсвэл "Cannot read properties of undefined (reading 'protocol')" алдаа өгдөг (бодит network client-аар турьж олсон).
 

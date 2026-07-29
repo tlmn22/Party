@@ -98,6 +98,40 @@ const room = await client.joinOrCreate('thirteen_tree_poker', {
 });
 ```
 
+### ⚠️ Interner тасрах / refresh хийхэд буцаж орох (маш чухал, анхандаа мартагдсан)
+
+Хэрэглэгчийн интернет тасрах эсвэл хуудсаа refresh хийхэд **тэр л өрөөндөө, тэр л суудалдаа буцаж орж, өмнөх хөзөр/байрлалаа сэргээх** боломжтой байх ёстой гэдэг анхны шаардлагыг санаж байгаа биз. Сервер тал (`onDrop`/`allowReconnection`/`onReconnect`) энэ логикийг аль хэдийн дэмждэг, гэхдээ **client тал өөрөө тодорхой алхам хийх ёстой** — эс тэгвэл `joinOrCreate`-ийг дахин дуудаад **шинэ** суудал/session үүсгэчихдэг (хуучин руугаа биш).
+
+**Гол зарчим**: холбогдмогц Colyseus `room.reconnectionToken`-ийг өгдөг (богино хугацаанд хүчинтэй, ойролцоогоор 60 сек, сервер restart болоогүй л бол). Үүнийг `localStorage`-д хадгалж, дараа нь (refresh/тасрах дараа) `client.reconnect(token)`-ыг `joinOrCreate`-ийн оронд дуудвал **яг тэр л session, sessionId, гар руу нь буцаж орно**.
+
+```ts
+async function connectToGame(code: string, joinToken: string, displayName: string) {
+  const client = new Client(WS_URL);
+  const savedToken = localStorage.getItem(`reconnect:${code}`);
+
+  let room;
+  if (savedToken) {
+    try {
+      room = await client.reconnect(savedToken); // яг тэр session рүү буцна (шинэ suudал биш)
+    } catch {
+      // Token хугацаа дууссан эсвэл сервер restart хийсэн — ердийн шинэ холболт хий
+      room = await client.joinOrCreate('thirteen_tree_poker', { joinToken, code, displayName });
+    }
+  } else {
+    room = await client.joinOrCreate('thirteen_tree_poker', { joinToken, code, displayName });
+  }
+
+  // Дараагийн refresh/тасралтад ашиглахын тулд шинэ token-оо ЯГ ХОЛБОГДОХ БҮРД дахин хадгал
+  localStorage.setItem(`reconnect:${code}`, room.reconnectionToken);
+
+  return room;
+}
+```
+
+Хэрэглэгч зориудаар "гарах" (leave/quit) товч дарвал `localStorage.removeItem(...)`-оор тэр token-оо цэвэрлэ — эс тэгвэл дараа нэвтрэхэд хуучин (аль хэдийн хаагдсан) session рүү орохыг оролдоно.
+
+Энэ механизмыг [`test-client/play.ts`](../test-client/play.ts)-д `--reconnect <token>` параметрээр турьж, sessionId яг хадгалагдаж байгааг баталгаажуулсан.
+
 ### State-ийг сонсох (бүгдэд харагдах мэдээлэл)
 
 ```ts

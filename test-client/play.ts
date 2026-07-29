@@ -8,6 +8,11 @@
 // Usage (joiners, use the code the host prints):
 //   npx ts-node test-client/play.ts --email test3@example.com --password Password123! --code ABCDEF
 //
+// Usage (simulating a refresh/dropped connection — reconnect into the SAME seat):
+//   npx ts-node test-client/play.ts --reconnect <token>
+//   (the token is printed as "RECONNECT TOKEN: ..." right after every successful
+//   connect — save it before killing/refreshing a client to test getting back in)
+//
 // Requires SUPABASE_URL + SUPABASE_ANON_KEY in the environment (anon key is the
 // public one from Project Settings -> API, safe to pass around — NOT service_role).
 //
@@ -84,51 +89,68 @@ function renderState(state: any) {
 }
 
 async function main() {
-  const email = arg('email');
-  const password = arg('password');
-  const isHost = flag('host');
-  const code = arg('code');
-  const targetScore = arg('target-score') ? Number(arg('target-score')) : undefined;
+  const reconnectToken = arg('reconnect');
+  const client = new Client(WS_URL);
+  let colyseusRoom: any;
+  let displayName: string;
 
-  if (!email || !password) throw new Error('--email and --password are required');
-  if (!isHost && !code) throw new Error('Non-host must pass --code <room code>');
-
-  console.log('Logging in to Supabase...');
-  const accessToken = await supabaseSignInOrSignUp(email, password);
-  const displayName = email.split('@')[0];
-
-  let room: any;
-  if (isHost) {
-    console.log('Creating room...');
-    const res = await fetch(`${BACKEND_URL}/rooms`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ gameType: 'thirteen_tree_poker', targetScore }),
-    });
-    const body = await res.json();
-    if (!res.ok) throw new Error(`Create room failed: ${JSON.stringify(body)}`);
-    room = body.data;
-    console.log(`\n>>> ROOM CODE: ${room.room.code} <<<  (give this to the other 3 players)\n`);
+  if (reconnectToken) {
+    // Simulates a refreshed/dropped client getting back into the SAME seat —
+    // this is Colyseus's own mechanism, entirely separate from our joinToken/onAuth
+    // REST flow. No Supabase login or /rooms call needed for this path at all.
+    console.log('Reconnecting with saved token...');
+    colyseusRoom = await client.reconnect(reconnectToken);
+    displayName = '(reconnected)';
+    console.log(`Reconnected. sessionId=${colyseusRoom.sessionId}`);
   } else {
-    console.log(`Joining room ${code}...`);
-    const res = await fetch(`${BACKEND_URL}/rooms/join`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
+    const email = arg('email');
+    const password = arg('password');
+    const isHost = flag('host');
+    const code = arg('code');
+    const targetScore = arg('target-score') ? Number(arg('target-score')) : undefined;
+
+    if (!email || !password) throw new Error('--email and --password are required (or use --reconnect <token>)');
+    if (!isHost && !code) throw new Error('Non-host must pass --code <room code>');
+
+    console.log('Logging in to Supabase...');
+    const accessToken = await supabaseSignInOrSignUp(email, password);
+    displayName = email.split('@')[0];
+
+    let room: any;
+    if (isHost) {
+      console.log('Creating room...');
+      const res = await fetch(`${BACKEND_URL}/rooms`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameType: 'thirteen_tree_poker', targetScore }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(`Create room failed: ${JSON.stringify(body)}`);
+      room = body.data;
+      console.log(`\n>>> ROOM CODE: ${room.room.code} <<<  (give this to the other 3 players)\n`);
+    } else {
+      console.log(`Joining room ${code}...`);
+      const res = await fetch(`${BACKEND_URL}/rooms/join`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(`Join room failed: ${JSON.stringify(body)}`);
+      room = body.data;
+    }
+
+    console.log('Connecting to Colyseus...');
+    colyseusRoom = await client.joinOrCreate('thirteen_tree_poker', {
+      joinToken: room.joinToken,
+      code: room.room.code,
+      displayName,
     });
-    const body = await res.json();
-    if (!res.ok) throw new Error(`Join room failed: ${JSON.stringify(body)}`);
-    room = body.data;
+    console.log(`Connected as ${displayName}. sessionId=${colyseusRoom.sessionId}`);
   }
 
-  console.log('Connecting to Colyseus...');
-  const client = new Client(WS_URL);
-  const colyseusRoom = await client.joinOrCreate('thirteen_tree_poker', {
-    joinToken: room.joinToken,
-    code: room.room.code,
-    displayName,
-  });
-  console.log(`Connected as ${displayName}. sessionId=${colyseusRoom.sessionId}`);
+  console.log(`\n>>> RECONNECT TOKEN: ${colyseusRoom.reconnectionToken} <<<`);
+  console.log('(save this — if this client drops/refreshes, restart with --reconnect <token> to get back into the same seat)\n');
 
   let myHand: Card[] = [];
 
